@@ -1,6 +1,5 @@
 import requests
 import json
-import time
 from bs4 import BeautifulSoup, SoupStrainer
 
 headers = {
@@ -34,12 +33,12 @@ def extract_product_info(soup: BeautifulSoup) -> dict:
     product_brand = brand_and_name[0].text.strip()
     product_name = brand_and_name[1].text.strip()
 
-    product_article = soup.find('span', id='productNmId').text.strip()
+    product_vendor_code = soup.find('span', id='productNmId').text.strip()
 
     product_detail = {
         'product_brand': product_brand,
         'product_name': product_name,
-        'product_article': product_article,
+        'product_vendor_code': product_vendor_code,
         'product_price': product_price,
         'product_price_with_sale': product_price_with_sale,
     }
