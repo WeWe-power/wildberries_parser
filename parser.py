@@ -22,9 +22,10 @@ def get_data(url: str) -> str | None:
     return response.text
 
 
-def extract_product_info(soup: BeautifulSoup) -> dict:
+def extract_product_info(soup: BeautifulSoup) -> dict[str, str]:
     """
-    Extracts all data about product and saves it to dict
+    Extracts all info about product and return dict containing product info,
+    exactly: price, sale price, brand, name, vendor  code
     """
     product_price = ''.join(soup.find('del', class_='price-block__old-price').text.strip().split()[:-1])
     product_price_with_sale = ''.join(soup.find('span', class_='price-block__final-price').text.strip().split()[:-1])
@@ -46,7 +47,11 @@ def extract_product_info(soup: BeautifulSoup) -> dict:
     return product_detail
 
 
-def get_product_info(url: str) -> dict | None:
+def get_product_info(url: str) -> dict[str, str] | None:
+    """
+    Parse wildberries product info by product url,
+
+    """
     html = get_data(url)
 
     # check if data is get properly
