@@ -1,40 +1,87 @@
-import requests
 import json
-from bs4 import BeautifulSoup, SoupStrainer
 
-headers = {
-    "Accept": "*/*",
-    "Accept-Encoding": "gzip, deflate, br",
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-    "Accept-Language": "ru",
-    "Connection": "keep-alive",
-}
+from bs4 import BeautifulSoup, SoupStrainer
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, InvalidArgumentException
+
 parser = 'lxml'
+
+
+def get_soup_parser(
+        html: str,
+        restrictive_class: str | None = "product-detail"
+) -> BeautifulSoup:
+    """
+    Gets page html and restrictive class that needed to limit parsing zone inside this class, returns soup object
+    """
+
+    # All info that we need is contained in div with class product-detail so lets parse only from that div
+    # Make parsing faster for about 40%
+    div_containing_product_details = SoupStrainer(class_=restrictive_class)
+    soup = BeautifulSoup(html, parser, parse_only=div_containing_product_details)
+
+    return soup
+
+
+def get_web_driver() -> webdriver.Chrome:
+    """
+    Getting selenium webdriver that make hidden browser operations and has hidden webdriver flag
+    """
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    web_driver = webdriver.Chrome(options=options)
+
+    return web_driver
 
 
 def get_data(url: str) -> str | None:
     """
-    Returns string containing all html code from a page with given url
+    Gets html page including dynamically loaded by js content
     """
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
+    driver = get_web_driver()
+
+    # Check if url is correct
+    try:
+        driver.get(url)
+    except InvalidArgumentException:
         return None
-    return response.text
+
+    # Tries to find producer info or returns None if cannot find( it may be caused by wrong link )
+    try:
+        WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.CLASS_NAME, "seller-details__title")))
+    except TimeoutException:
+        return None
+
+    return driver.page_source
 
 
-def extract_product_info(soup: BeautifulSoup) -> dict[str, str]:
+def extract_product_info(html: str) -> dict[str, str]:
     """
     Extracts all info about product and return dict containing product info,
     exactly: price, sale price, brand, name, vendor  code
     """
-    product_price = ''.join(soup.find('del', class_='price-block__old-price').text.strip().split()[:-1])
+
+    soup = get_soup_parser(html)
+
     product_price_with_sale = ''.join(soup.find('span', class_='price-block__final-price').text.strip().split()[:-1])
+    # if there is no sale then produce price with sale is our price and product price will be none because there
+    # is no block with class price-block__old-price
+    try:
+        product_price = ''.join(soup.find('del', class_='price-block__old-price').text.strip().split()[:-1])
+    except AttributeError:
+        product_price = product_price_with_sale
 
     brand_and_name = soup.find('h1', class_='same-part-kt__header').find_all('span')
     product_brand = brand_and_name[0].text.strip()
     product_name = brand_and_name[1].text.strip()
 
     product_vendor_code = soup.find('span', id='productNmId').text.strip()
+    provider = soup.find('a', class_='seller-details__title').text.strip()
 
     product_detail = {
         'product_brand': product_brand,
@@ -42,6 +89,7 @@ def extract_product_info(soup: BeautifulSoup) -> dict[str, str]:
         'product_vendor_code': product_vendor_code,
         'product_price': product_price,
         'product_price_with_sale': product_price_with_sale,
+        'provider': provider,
     }
 
     return product_detail
@@ -53,16 +101,9 @@ def get_product_info(url: str) -> dict[str, str] | None:
 
     """
     html = get_data(url)
-
-    # check if data is get properly
     if html:
-        # All info that we need is contained in div with class product-detail so lets parse only from that div
-        # Make parsing faster for about 40%
-        div_containing_product_details = SoupStrainer(class_="product-detail")
-        soup = BeautifulSoup(html, parser, parse_only=div_containing_product_details)
-
         # getting product details
-        product_detail = extract_product_info(soup)
+        product_detail = extract_product_info(html)
 
         # writing data to output file
         with open('products.json', 'w') as file:
@@ -70,7 +111,3 @@ def get_product_info(url: str) -> dict[str, str] | None:
         return product_detail
     else:
         return None
-
-
-url = 'https://www.wildberries.ru/catalog/70796973/detail.aspx?targetUrl=GP'
-get_product_info(url)
